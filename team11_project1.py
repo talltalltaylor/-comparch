@@ -59,7 +59,7 @@ class Disassemble:
                 input_file = sys.argv[i + 1]
                 print input_file
             elif sys.argv[i] == '-o' and i < (len(sys.argv) - 1):
-                output_file = sys.argv[i + 1]
+                output_file = sys.argv[i + 1] + '.txt'
 
         def get_instr(input_file):
             with open(input_file, 'r') as f:
