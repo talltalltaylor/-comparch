@@ -181,7 +181,7 @@ class Disassemble:
                     argStr1.append("\tR" + str(arg3[index]))
                     argStr2.append("R" + str(arg1[index]))
                     argStr3.append("#" + str(arg2[index]))
-                    instrSpaced.append(bin2spaced_r(instructions[i]))
+                    instrSpaced.append(bin2spaced_r(instructions[index]))
                     o.write(instrSpaced[index] + "\t" + str(mem_loc) + "\t\t" + opcodeStr[index] + "\t" + argStr1[index]
                             + ", " + argStr2[index] + ", " + argStr3[index] + "\n")
 
@@ -317,7 +317,12 @@ class Disassemble:
                     o.write(instrSpaced[index] + "\t" + str(mem_loc) + "\t\t" + opcodeStr[index] + "" + argStr1[index]
                             + "\n")
 
-                else:  # Anything that is not ADD or SU
+                elif int(opcode[index]) == 0:
+                    opcodeStr.append("NOP")
+                    instrSpaced.append(bin2spaced(instructions[index]))
+                    o.write(instrSpaced[index] + "\t\t" + str(mem_loc) + "\t\t" + opcodeStr[index] +"\n")
+
+                else:
                     opcodeStr.append("-")
                     cntr += 1
                     arg1.append((int(instructions[index], base=2) & rnMask) >> 5)
