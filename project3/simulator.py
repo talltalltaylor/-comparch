@@ -5,28 +5,12 @@ cycle = 0
 pre_issue_buff = [-1, -1, -1, -1]
 pre_alu_buff = [-1, -1]
 pre_mem_buff = [-1, -1]
-post_mem_buff = [30, 3]
-post_alu_buff = [-10, 5]
+post_mem_buff = [-1, -1]
+post_alu_buff = [-1, -1]
 r = [0] * 32
 
 class Simulator:
 
-    class WB:
-
-        def __init__(self):
-            pass
-
-        @staticmethod
-        def run():
-
-            if post_alu_buff[1] != -1:
-                r[post_alu_buff[1]] = post_alu_buff[0]
-                post_alu_buff[0] = -1
-                post_alu_buff[1] = -1
-            if post_mem_buff[1] != -1:
-                r[post_mem_buff[1]] = post_mem_buff[0]
-                post_mem_buff[0] = -1
-                post_mem_buff[1] = -1
 
     def __init__(self, instrs, opcodes, mem, addrs, 
     arg1, arg2, arg3, num_instrs, dest, src1, src2, cycle):
@@ -70,6 +54,12 @@ class Simulator:
                 else:
                     output_file.write("R" + str(i) + "\t")
             output_file.write(str(r[i]) + "\t")
+    
+    def get_mem_idx(self, address, is_instr):
+        if is_instr is False:
+            return (address - (96 + (self.num_instrs * 4))) / 4
+        else:
+            return (address - 96) / 4
 
     def run(self):
 
@@ -86,6 +76,23 @@ class Simulator:
             self.WB.run()
             self.print_state(output_file)
             self.cycle += 1
+    
+    class WB:
+
+        def __init__(self):
+            pass
+
+        @staticmethod
+        def run():
+
+            if post_alu_buff[1] != -1:
+                r[post_alu_buff[1]] = post_alu_buff[0]
+                post_alu_buff[0] = -1
+                post_alu_buff[1] = -1
+            if post_mem_buff[1] != -1:
+                r[post_mem_buff[1]] = post_mem_buff[0]
+                post_mem_buff[0] = -1
+                post_mem_buff[1] = -1
             
 
     class MEM:
@@ -96,6 +103,119 @@ class Simulator:
         @staticmethod
         def run():
             print("Do the damn thing")
+
+    class Cache:
+
+        sets = [[[0,0,0,0,0],[0,0,0,0,0]], [[0,0,0,0,0],[0,0,0,0,0]],
+                [[0,0,0,0,0],[0,0,0,0,0]], [[0,0,0,0,0],[0,0,0,0,0]]]
+        
+        lru = [0,0,0,0]
+        tag_msk = 4294967264
+        set_msk = 24
+
+        missed_list = []
+        
+        def __init__(self):
+            pass
+        @staticmethod
+        def flush():
+            print("Flush, bitch")
+
+        @staticmethod
+        def access_mem(mem_idx, inst_idx, is_write, data_to_write):
+            # check if mem or instruction and calculate address
+            if mem_idx == -1:
+                address_local = 96 + (4 * inst_idx)
+            else:
+                address_local = 96 + (4 * num_instrs) + (4 * mem_idx)
+            
+            # figure out which word in the block
+            if address_local % 8 == 0:
+                data_word = 0
+                addr1 = address_local
+                addr2 = address_local + 4
+            elif address_local % 8 != 0:
+                data_word = 1
+                addr1 = address_local
+                addr2 = address_local + 4
+
+            # if addr1 is instr, get instruction
+            # else, get data
+            if addr1 < 96 + (4 * num_instrs):
+                data1 = instrs[get_mem_idx(addr1, True)]
+            else:
+                data1 = mem[get_mem_idx(addr1, False)]
+
+            # same thing for addr2
+            if addr2 < 96 + (4 * num_instrs):
+                data2 = instrs[get_mem_idx(addr2, True)]
+            else:
+                data2 = mem[get_mem_idx(addr2, False)]
+            
+            if is_write and data_word == 0:
+                data1 = data_to_write
+            elif is_write and data_word == 1:
+                data2 = data_to_write
+            
+            # get set and tag for addr1
+            set_num = (addr1 & set_msk) >> 3
+            tag = (addr1 & tag_msk) >> 5
+
+            if sets[set_num][0][0] == 1 and sets[set_num][0][2] == tag:
+                hit = True
+                assoc_block = 0
+            elif sets[set_num][1][0] == 1 and sets[set_num][1][2] == tag:
+                hit = True
+                assoc_block = 1
+
+            # if hit, update LRU and dirty bit if is_write = True
+            if hit:
+                if hit and is_write:
+                    sets[set_num][assoc_block][1] = 1
+                    lru[set_num] = (assoc_block + 1) % 2
+                    sets[set_num][assoc_block][data_word + 3] = data_to_write
+                lru[set_num] = (assoc_block + 1) % 2
+                return [True, sets[set_num][assoc_block][data_word + 3]]
+            else:  # miss
+                # if we missed last time, take it out of the list and do the write
+                if addr1 in missed_list:
+                    while missed_list.count(addr1) > 0:
+                        missed_list.remove(addr1)
+                    # if dirty bit is 1 do write back    
+                    if sets[set_num][lru[set_num]][2] == 1:
+                        wb_addr = sets[set_num][lru[set_num]][2]
+                        wb_addr = (wb_addr << 5) + (set_num << 3)
+                        if wb_addr >= (num_instrs * 4) + 96:
+                            mem[get_mem_idx(wb_addr, False)] = sets[set_num][lru[set_num]][3]
+                        if wb_addr + 4 >= (num_instrs * 4) + 96:
+                            mem[get_mem_idx(wb_addr, False)] = sets[set_num][lru[set_num]][4]
+
+                    # write cache
+
+                    # valid = 1
+                    sets[set_num][lru[set_num]][0] = 1
+                    # dirty bit = 0 or 1 depending on is_write
+                    sets[set_num][lru[set_num]][1] = 0
+                    if is_write:
+                        sets[set_num][lru[set_num]][1] = 1
+                    # write tag, data1 and data2
+                    sets[set_num][lru[set_num]][2] = tag
+                    sets[set_num][lru[set_num]][3] = data1
+                    sets[set_num][lru[set_num]][4] = data2
+                    # change lru bit
+                    lru[set_num] = (lru[set_num] + 1) % 2
+
+                    return [True, sets[set_num][(lru[set_num] + 1) % 2]][data_word + 3]
+                else:
+                    if missed_list.count(addr1) == 0:
+                        missed_list.append(addr1)
+                    return [False, 0]
+
+
+
+
+            
+
 
 if __name__ == "__main__":
     d = disassembler.Disassembler()
